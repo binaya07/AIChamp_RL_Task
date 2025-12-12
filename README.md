@@ -15,6 +15,9 @@ The grading process also verifies that the titles and authors in the sources mat
 
 ## Setup
 
-The vector store data is available for download from a URL. Download the data and place it inside the `vectorstore/` folder before running the project.
+The vector store data is available for download from the following dropbox url
+`https://www.dropbox.com/scl/fi/z7nyvp1b3xdk67pwxqd03/chroma.sqlite3?rlkey=90z7n2yfyq4sh4ejejd8rvaf4&st=mh8s0yan&dl=0`
+
+Download the vector store and place it inside the `vectorstore/` folder before running the project.
 
 To run the task, execute `uv run main.py`.
