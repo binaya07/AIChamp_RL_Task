@@ -7,6 +7,8 @@ from typing import Any, Callable, TypedDict
 from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam, ToolUnionParam
 
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 
 class PythonExpressionToolResult(TypedDict):
     result: Any
@@ -17,6 +19,25 @@ class SubmitAnswerToolResult(TypedDict):
     answer: Any
     submitted: bool
 
+def context_builder(context: list, question: str) -> str:
+    """
+    Builds a context string from retrieved documents and a question.
+    """
+    desc = "Start Chunks\n"
+    for d in context:
+        title = d.metadata["source_title"]
+        authors = d.metadata["source_authors"]
+
+        desc += "CHUNK:\n"
+        desc += d.page_content
+        desc += "\n"
+        desc += f"Article Title: {title}\n"
+        desc += f"Article Authors: {authors}\n"
+        desc += "\n"
+
+    desc += "End Chunks\n"
+    desc += f"Question: {question}\n"
+    return desc
 
 def python_expression_tool(expression: str) -> PythonExpressionToolResult:
     """
@@ -34,13 +55,52 @@ def python_expression_tool(expression: str) -> PythonExpressionToolResult:
     except Exception as e:
         return {"result": None, "error": str(e)}
 
-
 def submit_answer_tool(answer: Any) -> SubmitAnswerToolResult:
     """
     Tool for submitting the final answer.
     """
     return {"answer": answer, "submitted": True}
 
+def grade_answer(answer: Any, question: str, additional_context: str) -> bool:
+    try:
+        if isinstance(answer, str):
+            data = json.loads(answer)
+        else:
+            data = answer
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(data, dict):
+        return False
+    if 'question' not in data:
+        return False
+    if data['question'] != question:
+        return False
+    if 'answer' not in data:
+        return False
+    if 'sources' not in data or not isinstance(data['sources'], list):
+        return False
+    for source in data['sources']:
+        if not isinstance(source, dict) or 'title' not in source or 'authors' not in source:
+            return False
+        title = source['title']
+        authors = source['authors']
+        if title not in additional_context or authors not in additional_context:
+            return False
+    return True
+
+def retrieval_tool(question: str) -> str:
+    """
+    Tool that retrieves relevant context for a given digital forensic question from a Chroma vector store.
+    """
+    hfe = HuggingFaceEmbeddings(
+        model_name="WhereIsAI/UAE-Large-V1",
+         # model_kwargs={'device': 'cuda'}, # Uncomment this line if using cuda
+        encode_kwargs={'normalize_embeddings': False})
+    db = Chroma(persist_directory='vectorstore', embedding_function=hfe)
+    retriever = db.as_retriever(search_kwargs={"k": 3})
+    results = retriever.invoke(question)
+    ctxt = context_builder(results, question)
+    return ctxt
 
 async def run_agent_loop(
     prompt: str,
@@ -162,7 +222,7 @@ async def run_single_test(
     prompt: str,
     tools: list[ToolUnionParam],
     tool_handlers: dict[str, Callable[..., Any]],
-    expected_answer: Any,
+    grader: Callable[[Any], bool],
     verbose: bool = False,
 ) -> tuple[int, bool, Any]:
     if verbose:
@@ -176,12 +236,13 @@ async def run_single_test(
         verbose=verbose,
     )
 
-    success = result == expected_answer
+    # print(f"Run {run_id}: result = {result}, type = {type(result)}")
+    success = grader(result) if result is not None else False
 
     if success:
         print(f"✓ Run {run_id}: SUCCESS - Got {result}")
     else:
-        print(f"✗ Run {run_id}: FAILURE - Got {result}, expected {expected_answer}")
+        print(f"✗ Run {run_id}: FAILURE - Got {result}")
 
     return run_id, success, result
 
@@ -220,9 +281,10 @@ async def main(concurrent: bool = True):
 
     # Run the test 10 times and track success rate
     num_runs = 10
-    expected_answer = 8769
-    prompt = "Calculate (2^10 + 3^5) * 7 - 100. Use the python_expression tool and then submit the answer."
-
+    question = "How to extract data from dji drone?"
+    additional_context = retrieval_tool(question)
+    prompt = f"You are an AI assistant tasked with answering digital forensic questions. Given the question: {question}, provide your final answer in JSON format. The JSON should have the following keys: 'question' - original question (string), 'answer' (string), and 'sources' (a list of source objects, each with 'title' and 'authors' strings, representing the sources used)."
+    grader = lambda ans: grade_answer(ans, question, additional_context)
     execution_mode = "concurrently" if concurrent else "sequentially"
     print(f"Running {num_runs} test iterations {execution_mode}...")
     print("=" * 60)
@@ -235,7 +297,7 @@ async def main(concurrent: bool = True):
             prompt=prompt,
             tools=tools,
             tool_handlers=tool_handlers,
-            expected_answer=expected_answer,
+            grader=grader,
             verbose=False,
         )
         for i in range(num_runs)

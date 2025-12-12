@@ -1,9 +1,12 @@
 [project]
-name = "hello-py"
+name = "forensicllm-rl"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.67.0",
+    "langchain-community",
+    "langchain-chroma",
+    "sentence-transformers>=5.2.0",
 ]
