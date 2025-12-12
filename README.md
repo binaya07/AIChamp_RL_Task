@@ -1,37 +1,20 @@
-forensicllm
-===
+# AI Champ RL Task
 
-Setup instructions:
+This project implements a reinforcement learning (RL) task for an AI assistant that answers digital forensics questions.
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/preferencemodel/hello-py.git
-   ```
+## Description
 
-2. Navigate to the project directory:
-   ```
-   cd hello-py
-   ```
+The RL task involves retrieving relevant context from a vector store using Chroma and HuggingFace embeddings. The retrieved context is combined with the question to form a prompt, which is then passed to Claude (via the Anthropic API). Claude uses tools to execute Python expressions and submit answers in a structured JSON format.
 
-3. Set up `ANTHROPIC_API_KEY` environment variable:
-   ```
-   export ANTHROPIC_API_KEY=your_api_key_here
-   ```
+The response is graded based on its adherence to the required JSON structure, which must include:
+- `question`: The original question (string)
+- `answer`: The final answer (string)
+- `sources`: A list of source objects, each with `title` and `authors` (strings)
 
-4. Run the agent:
-   ```
-   uv run main.py
-   ```
+The grading process also verifies that the titles and authors in the sources match those present in the retrieved context.
 
-## Execution Modes
+## Setup
 
-The test suite supports both concurrent and sequential execution. 
+The vector store data is available for download from a URL. Download the data and place it inside the `vectorstore/` folder before running the project.
 
-To change modes, edit the `concurrent` parameter at the bottom of `main.py`:
-
-```python
-asyncio.run(main(concurrent=True))
-asyncio.run(main(concurrent=False))
-```
-
-When running concurrently, results print as they complete (not in run order) for faster overall execution.
+To run the task, execute `uv run main.py`.
